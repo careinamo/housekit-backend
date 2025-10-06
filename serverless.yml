@@ -1,0 +1,67 @@
+# "org" ensures this Service is used with the correct Serverless Framework Access Key.
+org: careinamo
+# "app" enables Serverless Framework Dashboard features and sharing them with other Services.
+app: home-proyect
+# "service" is the name of this project. This will also be added to your AWS resource names.
+service: home-proyect
+
+stages:
+  default:
+    params:
+      tableName: "users-table-${sls:stage}"
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region}
+  # Uncomment to easily set up a custom domain. Read the docs for more details:
+  # https://www.serverless.com/framework/docs/providers/aws/guide/domains
+  # domain: api.example.com
+
+resources:
+  Resources:
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH   # Partition key
+          - AttributeName: SK
+            KeyType: RANGE  # Sort key
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${param:tableName}
+
+functions:
+  hello:
+    handler: handler.hello
+    events:
+      - httpApi:
+          path: /
+          method: get
+
+  listDevices:
+    handler: functions/listDevices.listDevices
+    events:
+      - httpApi:
+          path: /listDevices
+          method: get
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action:
+              - dynamodb:PutItem
+            Resource:
+              - arn:aws:dynamodb:${self:provider.region}:*:table/${param:tableName}
+
+  updateDeviceStatus:
+    handler: functions/updateDeviceStatus.updateDeviceStatus
+    events:
+      - httpApi:
+          path: /updateDeviceStatus
+          method: post
