@@ -14,10 +14,22 @@ provider:
   name: aws
   runtime: nodejs22.x
   region: ${opt:region}
-  # Uncomment to easily set up a custom domain. Read the docs for more details:
-  # https://www.serverless.com/framework/docs/providers/aws/guide/domains
-  # domain: api.example.com
-
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - Fn::GetAtt: [UsersTable, Arn]
+  environment:
+    USERS_TABLE: ${param:tableName}
+    
 resources:
   Resources:
     UsersTable:
@@ -65,3 +77,21 @@ functions:
       - httpApi:
           path: /updateDeviceStatus
           method: post
+
+  # 🔹 Nueva función ejecutada por EventBridge cada 15 minutos
+  refreshToken:
+    handler: functions/refreshToken.refreshToken
+    events:
+      - schedule:
+          rate: rate(5 minutes)
+          enabled: true
+          description: "Ejecuta la función cada 5 minutos desde EventBridge"
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:UpdateItem
+            Resource:
+              - arn:aws:dynamodb:${self:provider.region}:*:table/${param:tableName}

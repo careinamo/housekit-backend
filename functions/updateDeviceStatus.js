@@ -2,7 +2,7 @@ import axios from "axios";
 
 export const updateDeviceStatus = async (event) => {
   try {
-    const VALID_API_KEY = "MI_API_KEY_SECRETO_123";
+    const VALID_API_KEY = "AIzaSyAYIWRC7ATpF6mkbFEKrY8EH_Vk4oMGtrY";
 
     // 🔍 Leer encabezado x-api-key del request
     const apiKey = event.headers?.["x-api-key"] || event.headers?.["X-Api-Key"];
@@ -42,7 +42,7 @@ export const updateDeviceStatus = async (event) => {
       url: "https://us-apia.coolkit.cc/v2/device/thing/status",
       headers: {
         "X-CK-Nonce": "Ukz3EWWf",
-        "Authorization": "Bearer 04bcc2cd0b8b77214050ffcf3d69c1835ca6ede5",
+        "Authorization": "Bearer 329b368d0e99b969d5d71c4fe5c58216b2001ce3",
         "Content-Type": "application/json",
       },
       data: {
