@@ -62,14 +62,6 @@ functions:
       - httpApi:
           path: /listDevices
           method: get
-    iam:
-      role:
-        statements:
-          - Effect: Allow
-            Action:
-              - dynamodb:PutItem
-            Resource:
-              - arn:aws:dynamodb:${self:provider.region}:*:table/${param:tableName}
 
   updateDeviceStatus:
     handler: functions/updateDeviceStatus.updateDeviceStatus
@@ -77,6 +69,15 @@ functions:
       - httpApi:
           path: /updateDeviceStatus
           method: post
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:UpdateItem
+            Resource:
+              - arn:aws:dynamodb:${self:provider.region}:*:table/${param:tableName}
 
   # 🔹 Nueva función ejecutada por EventBridge cada 15 minutos
   refreshToken:

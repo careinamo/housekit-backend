@@ -1,4 +1,10 @@
 import axios from "axios";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+
+// Inicializa cliente DynamoDB
+const client = new DynamoDBClient({});
+const ddbDocClient = DynamoDBDocumentClient.from(client);
 
 export const listDevices = async (event) => {
     try {
@@ -19,12 +25,32 @@ export const listDevices = async (event) => {
             };
         }
 
+        // 🔑 Recuperar token desde DynamoDB
+        const params = {
+            TableName: "users-table-dev", // ⚠️ Cambia esto por tu nombre real de tabla
+            Key: { PK: "ewelinkToken#1", SK: "ewelinkToken#1" }, // ⚠️ Cambia esto según tu clave primaria
+        };
+
+        const result = await ddbDocClient.send(new GetCommand(params));
+
+        const token = result.Item?.data?.accessToken;
+        if (!token) {
+            return {
+                statusCode: 500,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    success: false,
+                    message: "No se encontró el token en DynamoDB.",
+                }),
+            };
+        }
+
         const response = await axios({
             method: "get",
             url: "https://us-apia.coolkit.cc/v2/device/thing",
             headers: {
                 "X-CK-Nonce": "saZ2JWV0",
-                "Authorization": "Bearer 329b368d0e99b969d5d71c4fe5c58216b2001ce3",
+                Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
             },
         });
