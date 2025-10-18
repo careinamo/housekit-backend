@@ -8,7 +8,7 @@ service: home-proyect
 stages:
   default:
     params:
-      tableName: "users-table-${sls:stage}"
+      tableName: "housekit-table-${sls:stage}"
 
 provider:
   name: aws
@@ -28,7 +28,7 @@ provider:
           Resource:
             - Fn::GetAtt: [UsersTable, Arn]
   environment:
-    USERS_TABLE: ${param:tableName}
+    UNIQUE_TABLE: ${param:tableName}
     
 resources:
   Resources:

@@ -1,6 +1,7 @@
 import axios from "axios";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+const UNIQUE_TABLE = process.env.UNIQUE_TABLE;
 
 // Inicializa cliente DynamoDB
 const client = new DynamoDBClient({});
@@ -37,7 +38,7 @@ export const updateDeviceStatus = async (event) => {
 
     // 🔑 Recuperar token desde DynamoDB
     const params = {
-      TableName: "users-table-dev", // ⚠️ Cambia esto por tu nombre real de tabla
+      TableName: UNIQUE_TABLE, // ⚠️ Cambia esto por tu nombre real de tabla
       Key: { PK: "ewelinkToken#1", SK: "ewelinkToken#1" }, // ⚠️ Cambia esto según tu clave primaria
     };
 

@@ -5,8 +5,7 @@ import {
   GetCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-
-const TABLE_NAME = "users-table-dev"; // ⚙️ Cambia o parametriza si quieres usar `${param:tableName}`
+const UNIQUE_TABLE = process.env.UNIQUE_TABLE;
 
 // 🔹 Inicializar cliente DynamoDB v3
 const client = new DynamoDBClient({});
@@ -16,7 +15,7 @@ export const refreshToken = async () => {
   try {
     // 1️⃣ Leer el registro desde DynamoDB
     const getParams = {
-      TableName: TABLE_NAME,
+      TableName: UNIQUE_TABLE,
       Key: { PK: "ewelinkToken#1", SK: "ewelinkToken#1" },
     };
 
