@@ -11,6 +11,7 @@ stages:
       tableName: housekit-table-${sls:stage}
       clientsTableName: clients-housekit-table-${sls:stage}
       housesTableName: houses-housekit-table-${sls:stage}
+      usersTableName: users-housekit-table-${sls:stage}
 
 provider:
   name: aws
@@ -33,6 +34,7 @@ provider:
     UNIQUE_TABLE: ${param:tableName}
     CLIENTS_TABLE: ${param:clientsTableName}
     HOUSES_TABLE: ${param:housesTableName}
+    USERS_TABLE_NAME: ${param:usersTableName}
 
 resources:
   Resources:
@@ -83,6 +85,22 @@ resources:
             KeyType: RANGE # Sort key
         BillingMode: PAY_PER_REQUEST
         TableName: ${param:housesTableName}
+    
+    UsersTableNew:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH # Partition key
+          - AttributeName: SK
+            KeyType: RANGE # Sort key
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${param:usersTableName}
 
 functions:
   hello:
@@ -164,3 +182,19 @@ functions:
               - dynamodb:PutItem
             Resource:
               - !GetAtt HousesTable.Arn
+
+  # 🔹 Nueva función para crear usuarios
+  createUser:
+    handler: functions/users/createUser.createUser
+    events:
+      - httpApi:
+          path: /createUser
+          method: post
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action:
+              - dynamodb:PutItem
+            Resource:
+              - !GetAtt UsersTableNew.Arn
