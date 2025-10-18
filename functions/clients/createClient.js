@@ -2,7 +2,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
 
-const UNIQUE_TABLE = process.env.UNIQUE_TABLE;
+const CLIENTS_TABLE = process.env.CLIENTS_TABLE;
 
 // Inicializa cliente DynamoDB
 const client = new DynamoDBClient({});
@@ -47,6 +47,7 @@ export const createClient = async (event) => {
         const item = {
             PK: `client#${uniqueId}`,
             SK: `client#${uniqueId}`,
+            id: uniqueId,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             ...body // Spread del resto de información del payload
@@ -54,7 +55,7 @@ export const createClient = async (event) => {
 
         // 💾 Guardar en DynamoDB
         const params = {
-            TableName: UNIQUE_TABLE,
+            TableName: CLIENTS_TABLE,
             Item: item,
             ConditionExpression: "attribute_not_exists(PK)" // Evitar sobrescribir si ya existe
         };

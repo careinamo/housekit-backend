@@ -8,7 +8,8 @@ service: home-proyect
 stages:
   default:
     params:
-      tableName: "housekit-table-${sls:stage}"
+      tableName: housekit-table-${sls:stage}
+      clientsTableName: clients-housekit-table-${sls:stage}
 
 provider:
   name: aws
@@ -26,10 +27,11 @@ provider:
             - dynamodb:UpdateItem
             - dynamodb:DeleteItem
           Resource:
-            - Fn::GetAtt: [UsersTable, Arn]
+            - !GetAtt UsersTable.Arn
   environment:
     UNIQUE_TABLE: ${param:tableName}
-    
+    CLIENTS_TABLE: clients-housekit-table-dev
+
 resources:
   Resources:
     UsersTable:
@@ -42,11 +44,27 @@ resources:
             AttributeType: S
         KeySchema:
           - AttributeName: PK
-            KeyType: HASH   # Partition key
+            KeyType: HASH # Partition key
           - AttributeName: SK
-            KeyType: RANGE  # Sort key
+            KeyType: RANGE # Sort key
         BillingMode: PAY_PER_REQUEST
         TableName: ${param:tableName}
+
+    ClientsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH # Partition key
+          - AttributeName: SK
+            KeyType: RANGE # Sort key
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${param:clientsTableName}
 
 functions:
   hello:
@@ -86,7 +104,7 @@ functions:
       - schedule:
           rate: rate(5 minutes)
           enabled: true
-          description: "Ejecuta la función cada 5 minutos desde EventBridge"
+          description: Ejecuta la función cada 5 minutos desde EventBridge
     iam:
       role:
         statements:
@@ -111,4 +129,4 @@ functions:
             Action:
               - dynamodb:PutItem
             Resource:
-              - arn:aws:dynamodb:${self:provider.region}:*:table/${param:tableName}
+              - arn:aws:dynamodb:${self:provider.region}:*:table/${param:clientsTableName}
