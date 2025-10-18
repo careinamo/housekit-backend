@@ -10,6 +10,7 @@ stages:
     params:
       tableName: housekit-table-${sls:stage}
       clientsTableName: clients-housekit-table-${sls:stage}
+      housesTableName: houses-housekit-table-${sls:stage}
 
 provider:
   name: aws
@@ -30,7 +31,8 @@ provider:
             - !GetAtt UsersTable.Arn
   environment:
     UNIQUE_TABLE: ${param:tableName}
-    CLIENTS_TABLE: clients-housekit-table-dev
+    CLIENTS_TABLE: ${param:clientsTableName}
+    HOUSES_TABLE: ${param:housesTableName}
 
 resources:
   Resources:
@@ -65,6 +67,22 @@ resources:
             KeyType: RANGE # Sort key
         BillingMode: PAY_PER_REQUEST
         TableName: ${param:clientsTableName}
+
+    HousesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH # Partition key
+          - AttributeName: SK
+            KeyType: RANGE # Sort key
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${param:housesTableName}
 
 functions:
   hello:
@@ -130,3 +148,19 @@ functions:
               - dynamodb:PutItem
             Resource:
               - arn:aws:dynamodb:${self:provider.region}:*:table/${param:clientsTableName}
+
+  # 🔹 Nueva función para crear casas
+  createHouse:
+    handler: functions/houses/createHouse.createHouse
+    events:
+      - httpApi:
+          path: /createHouse
+          method: post
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action:
+              - dynamodb:PutItem
+            Resource:
+              - !GetAtt HousesTable.Arn
