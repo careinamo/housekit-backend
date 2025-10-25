@@ -258,3 +258,21 @@ functions:
             Resource:
               - !GetAtt UsersTableNew.Arn
               - !Sub "${UsersTableNew.Arn}/index/SKIndex"
+
+  # 🔹 Nueva función para obtener dispositivos por usuario
+  getDevicesByUser:
+    handler: functions/devices/getDevicesByUser.getDevicesByUser
+    events:
+      - httpApi:
+          path: /getDevicesByUser
+          method: post
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+            Resource:
+              - !GetAtt UsersTableNew.Arn
+              - !GetAtt DevicesTable.Arn
