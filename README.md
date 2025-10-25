@@ -250,6 +250,59 @@ curl -X POST https://YOUR-API-GATEWAY-URL/updateDeviceStatus \
 }
 ```
 
+---
+
+### 8. Obtener Usuario por Documento
+
+```bash
+curl -X GET https://YOUR-API-GATEWAY-URL/getUser/ppt5492993 \
+  -H "x-api-key: AIzaSyAYIWRC7ATpF6mkbFEKrY8EH_Vk4oMGtrY"
+```
+
+**Respuesta (Usuario encontrado):**
+```json
+{
+  "success": true,
+  "message": "Usuario encontrado exitosamente.",
+  "data": {
+    "user": {
+      "PK": "house#a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "SK": "user#ppt5492993",
+      "createdAt": "2025-10-25T10:30:00.000Z",
+      "name": "Christian Areinamo",
+      "document": "ppt5492993",
+      "dateCut": 30,
+      "quotes": {
+        "washing_machine": 4,
+        "dryer_slots": 4
+      },
+      "penalties": {
+        "washing_machine": 0,
+        "dryer_slots": 0
+      }
+    },
+    "totalHouses": 1,
+    "allHouses": [
+      // Array con todos los registros si el usuario está en múltiples casas
+    ]
+  }
+}
+```
+
+**Respuesta (Usuario no encontrado):**
+```json
+{
+  "success": false,
+  "message": "Usuario con documento 'ppt5492993' no encontrado."
+}
+```
+
+**Características especiales:**
+- ⚡ **GSI Optimizado**: Utiliza el índice `SKIndex` para consultas O(1)
+- 🏠 **Multi-casa**: Si el usuario está registrado en varias casas, retorna todos los registros
+- 📊 **Estadísticas**: Incluye `totalHouses` para saber en cuántas casas está el usuario
+- 📍 **Path Parameter**: El documento va directamente en la URL
+
 ## Arquitectura de Base de Datos
 
 ### 📊 Estructura de Tablas
