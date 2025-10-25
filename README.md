@@ -250,55 +250,183 @@ curl -X POST https://YOUR-API-GATEWAY-URL/updateDeviceStatus \
 }
 ```
 
-## Estructura de Datos en DynamoDB
+## Arquitectura de Base de Datos
 
-### Clientes
+### 📊 Estructura de Tablas
+
+El proyecto utiliza un diseño optimizado con **5 tablas DynamoDB independientes**, cada una con patrones de acceso específicos:
+
+#### **1. Tabla Principal: `housekit-table-{stage}`**
+```json
+{
+  "PK": "ewelinkToken#1",
+  "SK": "ewelinkToken#1", 
+  "data": {
+    "accessToken": "bearer_token_here",
+    "refreshToken": "refresh_token_here",
+    "atExpiredTime": 1729123456789
+  }
+}
+```
+- **Propósito**: Almacenar tokens de eWeLink
+- **Patrón**: Token management y refresh automático
+
+#### **2. Tabla de Clientes: `clients-housekit-table-{stage}`**
 ```json
 {
   "PK": "client#f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "name": "Juan Pérez",
   "email": "juan@example.com",
-  "createdAt": "2025-10-25T10:30:00.000Z"
+  "phone": "+1234567890",
+  "address": "123 Main St",
+  "createdAt": "2025-10-25T10:30:00.000Z",
+  "updatedAt": "2025-10-25T10:30:00.000Z"
 }
 ```
+- **Patrón**: `client#{uuid}` solo en PK (sin Sort Key)
+- **Entidad**: Cliente independiente
 
-### Casas
+#### **3. Tabla de Casas: `houses-housekit-table-{stage}`**
 ```json
 {
   "PK": "client#f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "SK": "house#a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "houseId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "houseName": "Casa Principal",
-  "createdAt": "2025-10-25T10:30:00.000Z"
+  "createdAt": "2025-10-25T10:30:00.000Z",
+  "updatedAt": "2025-10-25T10:30:00.000Z"
 }
 ```
+- **Patrón**: PK = `client#{clientId}`, SK = `house#{houseId}`
+- **Relación**: Casas pertenecen a clientes (1:N)
 
-### Usuarios
+#### **4. Tabla de Usuarios: `users-housekit-table-{stage}`**
 ```json
 {
   "PK": "house#a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "SK": "user#ppt5492993",
+  "createdAt": "2025-10-25T10:30:00.000Z",
   "name": "Christian Areinamo",
   "document": "ppt5492993",
   "dateCut": 30,
-  "quotes": { "washing_machine": 4, "dryer_slots": 4 },
-  "penalties": { "washing_machine": 0, "dryer_slots": 0 }
+  "quotes": {
+    "washing_machine": 4,
+    "dryer_slots": 4
+  },
+  "penalties": {
+    "washing_machine": 0,
+    "dryer_slots": 0
+  }
 }
 ```
+- **Patrón**: PK = `house#{houseId}`, SK = `user#{document}`
+- **Relación**: Usuarios pertenecen a casas (1:N)
 
-### Dispositivos
+#### **5. Tabla de Dispositivos: `devices-housekit-table-{stage}`**
 ```json
 {
   "PK": "house#a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "SK": "device#b1c2d3e4-f5g6-7890-abcd-ef1234567890",
+  "createdAt": "2025-10-25T10:30:00.000Z",
   "name": "lavadora izquierda",
-  "serviceType": "washing_machine",
   "available": false,
+  "serviceType": "washing_machine",
   "userUsing": null,
   "clientId": "client#f47ac10b-58cc-4372-a567-0e02b2c3d479"
 }
 ```
+- **Patrón**: PK = `house#{houseId}`, SK = `device#{deviceId}`
+- **Relación**: Dispositivos pertenecen a casas (1:N)
+
+### 🔗 Modelo de Relaciones
+
+```
+Cliente (1) ──┐
+              ├─── Casa (N) ──┐
+              │               ├─── Usuario (N)
+              │               └─── Dispositivo (N)
+              └─── Casa (N) ──┐
+                              ├─── Usuario (N)
+                              └─── Dispositivo (N)
+```
+
+### 📈 Patrones de Acceso Optimizados
+
+#### **Consultas por Cliente:**
+```javascript
+// Obtener todas las casas de un cliente
+const params = {
+  TableName: "houses-housekit-table-dev",
+  KeyConditionExpression: "PK = :clientId",
+  ExpressionAttributeValues: {
+    ":clientId": "client#f47ac10b-58cc-4372-a567-0e02b2c3d479"
+  }
+};
+```
+
+#### **Consultas por Casa:**
+```javascript
+// Obtener todos los usuarios y dispositivos de una casa
+const params = {
+  TableName: "users-housekit-table-dev", // o devices-housekit-table-dev
+  KeyConditionExpression: "PK = :houseId",
+  ExpressionAttributeValues: {
+    ":houseId": "house#a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  }
+};
+
+// Solo usuarios de una casa
+const paramsUsers = {
+  TableName: "users-housekit-table-dev",
+  KeyConditionExpression: "PK = :houseId AND begins_with(SK, :prefix)",
+  ExpressionAttributeValues: {
+    ":houseId": "house#a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    ":prefix": "user#"
+  }
+};
+
+// Solo dispositivos de una casa
+const paramsDevices = {
+  TableName: "devices-housekit-table-dev",
+  KeyConditionExpression: "PK = :houseId AND begins_with(SK, :prefix)",
+  ExpressionAttributeValues: {
+    ":houseId": "house#a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    ":prefix": "device#"
+  }
+};
+```
+
+#### **Consultas por Tipo de Servicio:**
+```javascript
+// Todos los dispositivos de lavado
+const params = {
+  TableName: "devices-housekit-table-dev",
+  FilterExpression: "serviceType = :serviceType",
+  ExpressionAttributeValues: {
+    ":serviceType": "washing_machine"
+  }
+};
+```
+
+### ✅ Fortalezas del Diseño
+
+1. **🚀 Escalabilidad**: Excelente distribución de datos entre particiones
+2. **⚡ Consultas eficientes**: Patrones de acceso bien definidos sin hot partitions
+3. **🔗 Jerarquía clara**: Cliente → Casa → Usuario/Dispositivo
+4. **🔧 Flexibilidad**: Fácil agregar nuevos tipos de entidades
+5. **📊 Consistencia**: Uso consistente de prefijos (`client#`, `house#`, `user#`, `device#`)
+6. **🆔 Identificadores únicos**: UUID para evitar colisiones
+7. **🔄 Referencias cruzadas**: Campo `clientId` en dispositivos para consultas adicionales
+8. **⏰ Timestamps**: `createdAt` y `updatedAt` consistentes en todas las entidades
+
+### 🎯 Casos de Uso Optimizados
+
+- **Dashboard por cliente**: Una sola query obtiene todas sus casas
+- **Vista de casa específica**: Una query obtiene usuarios y dispositivos
+- **Gestión de cuotas**: Acceso directo por `house#{id}` y `user#{document}`
+- **Control de dispositivos**: Acceso directo por `house#{id}` y `device#{id}`
+- **Reportes por tipo**: Filtros eficientes por `serviceType`
 
 ## Funciones Automáticas
 
