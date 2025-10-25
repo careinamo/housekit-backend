@@ -241,3 +241,20 @@ functions:
               - dynamodb:PutItem
             Resource:
               - !GetAtt DevicesTable.Arn
+
+  # 🔹 Nueva función para consultar usuario por documento
+  getUser:
+    handler: functions/users/getUser.getUser
+    events:
+      - httpApi:
+          path: /getUser/{document}
+          method: get
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action:
+              - dynamodb:Query
+            Resource:
+              - !GetAtt UsersTableNew.Arn
+              - !Sub "${UsersTableNew.Arn}/index/SKIndex"
