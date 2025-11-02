@@ -13,6 +13,7 @@ stages:
       housesTableName: houses-housekit-table-${sls:stage}
       usersTableName: users-housekit-table-${sls:stage}
       devicesTableName: devices-housekit-table-${sls:stage}
+      servicesTableName: services-housekit-table-${sls:stage}
 
 provider:
   name: aws
@@ -37,6 +38,7 @@ provider:
     HOUSES_TABLE: ${param:housesTableName}
     USERS_TABLE_NAME: ${param:usersTableName}
     DEVICES_TABLE: ${param:devicesTableName}
+    SERVICES_TABLE: ${param:servicesTableName}
 
 resources:
   Resources:
@@ -137,6 +139,31 @@ resources:
               ProjectionType: ALL # Incluir todos los atributos
         BillingMode: PAY_PER_REQUEST
         TableName: ${param:devicesTableName}
+
+    ServicesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH # Partition key
+          - AttributeName: SK
+            KeyType: RANGE # Sort key
+        GlobalSecondaryIndexes:
+          - IndexName: SKIndex
+            KeySchema:
+              - AttributeName: SK
+                KeyType: HASH # Partition key (SK como PK del índice)
+              - AttributeName: PK
+                KeyType: RANGE # Sort key (PK como SK del índice)
+            Projection:
+              ProjectionType: ALL # Incluir todos los atributos
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${param:servicesTableName}
 
 functions:
   hello:
