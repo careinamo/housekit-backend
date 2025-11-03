@@ -507,3 +507,134 @@ serverless dev
 - `HOUSES_TABLE`: Tabla de casas
 - `USERS_TABLE_NAME`: Tabla de usuarios
 - `DEVICES_TABLE`: Tabla de dispositivos
+- `SERVICES_TABLE`: Tabla de servicios
+
+---
+
+## 🆕 Sistema de Servicios
+
+### 9. Solicitar Servicio (Reservar Dispositivo)
+
+Este endpoint permite que un usuario reserve un dispositivo para usar por 1.5 horas. Incluye validación de disponibilidad, manejo de cuotas y programación automática de finalización.
+
+```bash
+curl -X POST https://YOUR-API-GATEWAY-URL/requestService \
+  -H "x-api-key: AIzaSyAYIWRC7ATpF6mkbFEKrY8EH_Vk4oMGtrY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "house": "house#a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "device": "device#b1c2d3e4-f5g6-7890-abcd-ef1234567890", 
+    "user": "user#12345678"
+  }'
+```
+
+**Respuesta exitosa:**
+```json
+{
+  "success": true,
+  "message": "Servicio reservado exitosamente.",
+  "data": {
+    "device": "device#b1c2d3e4-f5g6-7890-abcd-ef1234567890",
+    "user": "user#12345678",
+    "house": "house#a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "reservedAt": "2025-10-25T14:30:00.000Z",
+    "scheduledFinishAt": "2025-10-25T16:00:00.000Z",
+    "userQuotaRemaining": 4,
+    "eventScheduled": true
+  }
+}
+```
+
+**Errores posibles:**
+- **400**: Dispositivo no disponible
+- **400**: Usuario sin cuotas suficientes
+- **404**: Dispositivo o usuario no encontrado
+
+### 10. Finalizar Servicio (Automático)
+
+Esta función se ejecuta automáticamente 1.5 horas después de reservar un servicio. Libera el dispositivo y marca el servicio como finalizado.
+
+> **Nota**: Esta función es invocada automáticamente por EventBridge. No requiere llamada manual.
+
+**Proceso automático:**
+1. ⏰ EventBridge programa la ejecución 1.5 horas después
+2. 🔄 Lambda libera el dispositivo (userUsing = null)
+3. 📝 Marca el servicio como finalizado (finishedAt)
+
+---
+
+## 📊 Estructura de Datos Completa
+
+### 📋 Tablas DynamoDB
+
+#### 1. **clients-housekit-table**
+```
+PK: client#{clientId}
+SK: METADATA
+Attributes: name, email, phone, address, createdAt
+```
+
+#### 2. **houses-housekit-table**
+```
+PK: house#{houseId}  
+SK: client#{clientId}
+Attributes: address, name, clientId, createdAt
+```
+
+#### 3. **users-housekit-table**
+```
+PK: house#{houseId}
+SK: user#{document}
+Attributes: name, document, phoneNumber, quota{totalQuota, usedQuota, penalties}, createdAt
+GSI: SKIndex (SK as PK, PK as SK)
+```
+
+#### 4. **devices-housekit-table**
+```
+PK: house#{houseId}
+SK: device#{deviceId}
+Attributes: clientId, name, serviceType, available, userUsing, createdAt
+GSI: SKIndex (SK as PK, PK as SK)
+```
+
+#### 5. **services-housekit-table** 🆕
+```
+PK: device#{deviceId}
+SK: user#{document}
+Attributes: house, reservedAt, scheduledFinishAt, finishedAt
+GSI: SKIndex (SK as PK, PK as SK)
+```
+
+---
+
+## 🔄 Flujo de Servicios
+
+### 📝 Proceso de Reserva
+1. **Validación**: Verifica que el dispositivo esté disponible
+2. **Cuotas**: Verifica que el usuario tenga cuotas disponibles
+3. **Reserva**: Asigna el dispositivo al usuario
+4. **Descuento**: Reduce las cuotas del usuario en 1
+5. **Registro**: Crea el registro del servicio
+6. **Programación**: Programa la finalización automática en 1.5 horas
+
+### ⏰ Finalización Automática
+1. **EventBridge**: Ejecuta lambda después de 1.5 horas
+2. **Liberación**: Marca dispositivo como disponible
+3. **Finalización**: Registra hora de finalización del servicio
+
+---
+
+## 🏗️ Arquitectura del Sistema
+
+### 🛠️ Componentes Principales
+- **AWS Lambda**: 11 funciones serverless
+- **DynamoDB**: 5 tablas con GSI para consultas eficientes  
+- **EventBridge**: Programación automática de tareas
+- **API Gateway**: 9 endpoints HTTP
+- **Serverless Framework**: Infraestructura como código
+
+### 🔄 Patrones de Acceso
+- **Single Table Design**: Optimizado para consultas relacionales
+- **Global Secondary Index**: Consultas inversas eficientes
+- **Event-Driven**: Automatización con EventBridge
+- **ACID Operations**: Operaciones atómicas en DynamoDB

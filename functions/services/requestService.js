@@ -1,0 +1,236 @@
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
+
+const USERS_TABLE_NAME = process.env.USERS_TABLE_NAME;
+const DEVICES_TABLE = process.env.DEVICES_TABLE;
+const SERVICES_TABLE = process.env.SERVICES_TABLE;
+
+// Inicializa clientes AWS
+const dynamoClient = new DynamoDBClient({});
+const ddbDocClient = DynamoDBDocumentClient.from(dynamoClient);
+const eventBridgeClient = new EventBridgeClient({});
+
+export const requestService = async (event) => {
+    try {
+        const VALID_API_KEY = "AIzaSyAYIWRC7ATpF6mkbFEKrY8EH_Vk4oMGtrY";
+
+        // 🔍 Leer encabezado x-api-key del request
+        const apiKey = event.headers?.["x-api-key"] || event.headers?.["X-Api-Key"];
+
+        if (!apiKey || apiKey !== VALID_API_KEY) {
+            return {
+                statusCode: 401,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    success: false,
+                    message: "Invalid API key.",
+                }),
+            };
+        }
+
+        // 📦 Parseamos el cuerpo recibido desde API Gateway
+        const body = typeof event.body === "string" ? JSON.parse(event.body) : event.body;
+        
+        if (!body || !body.house || !body.device || !body.user) {
+            return {
+                statusCode: 400,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    success: false,
+                    message: "Los campos 'house', 'device' y 'user' son requeridos.",
+                }),
+            };
+        }
+
+        const { house, device, user } = body;
+
+        // 1.1 🔍 Obtener información del dispositivo
+        const getDeviceParams = {
+            TableName: DEVICES_TABLE,
+            Key: {
+                PK: house,
+                SK: device
+            }
+        };
+
+        const deviceResult = await ddbDocClient.send(new GetCommand(getDeviceParams));
+
+        if (!deviceResult.Item) {
+            return {
+                statusCode: 404,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    success: false,
+                    message: `Dispositivo '${device}' no encontrado en la casa '${house}'.`,
+                }),
+            };
+        }
+
+        const deviceData = deviceResult.Item;
+
+        // 1.2 ✅ Validar si el dispositivo está siendo usado
+        if (deviceData.userUsing !== null && deviceData.userUsing !== undefined) {
+            return {
+                statusCode: 409,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    success: false,
+                    message: "El dispositivo ya está siendo usado por otro usuario.",
+                    userUsing: deviceData.userUsing
+                }),
+            };
+        }
+
+        // 1.3 👤 Obtener información del usuario
+        const getUserParams = {
+            TableName: USERS_TABLE_NAME,
+            Key: {
+                PK: house,
+                SK: user
+            }
+        };
+
+        const userResult = await ddbDocClient.send(new GetCommand(getUserParams));
+
+        if (!userResult.Item) {
+            return {
+                statusCode: 404,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    success: false,
+                    message: `Usuario '${user}' no encontrado en la casa '${house}'.`,
+                }),
+            };
+        }
+
+        const userData = userResult.Item;
+        const serviceType = deviceData.serviceType;
+        const currentQuotes = userData.quotes[serviceType] || 0;
+
+        // Validar que el usuario tenga cuotas disponibles
+        if (currentQuotes <= 0) {
+            return {
+                statusCode: 400,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    success: false,
+                    message: `No tienes cuotas disponibles para el servicio '${serviceType}'.`,
+                    currentQuotes: currentQuotes
+                }),
+            };
+        }
+
+        // 1.4 🔄 Actualizar dispositivo con userUsing
+        const updateDeviceParams = {
+            TableName: DEVICES_TABLE,
+            Key: {
+                PK: house,
+                SK: device
+            },
+            UpdateExpression: "SET userUsing = :userUsing",
+            ExpressionAttributeValues: {
+                ":userUsing": {
+                    document: user,
+                    name: userData.name
+                }
+            }
+        };
+
+        await ddbDocClient.send(new UpdateCommand(updateDeviceParams));
+
+        // 1.5 📉 Decrementar cuotas del usuario
+        const updateUserParams = {
+            TableName: USERS_TABLE_NAME,
+            Key: {
+                PK: house,
+                SK: user
+            },
+            UpdateExpression: `SET quotes.#serviceType = quotes.#serviceType - :one`,
+            ExpressionAttributeNames: {
+                "#serviceType": serviceType
+            },
+            ExpressionAttributeValues: {
+                ":one": 1
+            }
+        };
+
+        await ddbDocClient.send(new UpdateCommand(updateUserParams));
+
+        // 1.6 📝 Crear registro en tabla de services
+        const now = new Date();
+        const estimatedEnd = new Date(now.getTime() + (90 * 60 * 1000)); // +1.5 horas
+
+        const serviceRecord = {
+            PK: device,
+            SK: user,
+            serviceType: serviceType,
+            startedAt: now.toISOString(),
+            finalEstimated: estimatedEnd.toISOString(),
+            finishedAt: null
+        };
+
+        const putServiceParams = {
+            TableName: SERVICES_TABLE,
+            Item: serviceRecord
+        };
+
+        await ddbDocClient.send(new PutCommand(putServiceParams));
+
+        // 1.7 ⏰ Crear evento para EventBridge (1.5 horas después)
+        const eventPayload = {
+            house: house,
+            device: device,
+            user: user
+        };
+
+        const putEventParams = {
+            Entries: [
+                {
+                    Source: "housekit.service",
+                    DetailType: "Service End Scheduled",
+                    Detail: JSON.stringify(eventPayload),
+                    Time: estimatedEnd
+                }
+            ]
+        };
+
+        await eventBridgeClient.send(new PutEventsCommand(putEventParams));
+
+        // ✅ Respuesta exitosa
+        return {
+            statusCode: 200,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                success: true,
+                message: "Servicio solicitado exitosamente.",
+                data: {
+                    service: serviceRecord,
+                    device: {
+                        name: deviceData.name,
+                        serviceType: deviceData.serviceType
+                    },
+                    user: {
+                        name: userData.name,
+                        document: userData.document,
+                        remainingQuotes: currentQuotes - 1
+                    },
+                    scheduledEndTime: estimatedEnd.toISOString()
+                }
+            }),
+        };
+
+    } catch (error) {
+        console.error("Error al solicitar servicio:", error);
+
+        return {
+            statusCode: 500,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                success: false,
+                message: "Error interno del servidor.",
+                error: error.message
+            }),
+        };
+    }
+};
