@@ -1,6 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
-import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
+import { SchedulerClient, CreateScheduleCommand } from "@aws-sdk/client-scheduler";
 
 const USERS_TABLE_NAME = process.env.USERS_TABLE_NAME;
 const DEVICES_TABLE = process.env.DEVICES_TABLE;
@@ -9,7 +9,7 @@ const SERVICES_TABLE = process.env.SERVICES_TABLE;
 // Inicializa clientes AWS
 const dynamoClient = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(dynamoClient);
-const eventBridgeClient = new EventBridgeClient({});
+const schedulerClient = new SchedulerClient({});
 
 export const requestService = async (event) => {
     try {
@@ -159,7 +159,7 @@ export const requestService = async (event) => {
 
         // 1.6 📝 Crear registro en tabla de services
         const now = new Date();
-        const estimatedEnd = new Date(now.getTime() + (90 * 60 * 1000)); // +1.5 horas
+        const estimatedEnd = new Date(now.getTime() + (5 * 60 * 1000)); // +1.5 horas
 
         const serviceRecord = {
             PK: device,
@@ -177,25 +177,37 @@ export const requestService = async (event) => {
 
         await ddbDocClient.send(new PutCommand(putServiceParams));
 
-        // 1.7 ⏰ Crear evento para EventBridge (1.5 horas después)
-        const eventPayload = {
-            house: house,
-            device: device,
-            user: user
+        // 1.7 ⏰ Crear schedule en EventBridge Scheduler
+        const scheduleName = `finish-service-${user.replace('#', '-')}-${Date.now()}`;
+        
+        // Construir ARNs dinámicamente para evitar dependencias circulares
+        const region = process.env.AWS_REGION || 'us-east-1';
+        const accountId = process.env.AWS_ACCOUNT_ID;
+        const stage = process.env.STAGE || 'dev';
+        const serviceName = process.env.SERVICE_NAME || 'home-proyect';
+        
+        const finishServiceLambdaArn = `arn:aws:lambda:${region}:${accountId}:function:${serviceName}-${stage}-finishService`;
+        const schedulerRoleArn = `arn:aws:iam::${accountId}:role/${serviceName}-${stage}-SchedulerRole`;
+        
+        const scheduleParams = {
+            Name: scheduleName,
+            ScheduleExpression: `at(${estimatedEnd.toISOString().slice(0, -5)})`, // Formato: at(2025-01-01T12:00:00)
+            Target: {
+                Arn: finishServiceLambdaArn,
+                RoleArn: schedulerRoleArn,
+                Input: JSON.stringify({
+                    house: house,
+                    device: device,
+                    user: user
+                })
+            },
+            FlexibleTimeWindow: {
+                Mode: "OFF"
+            },
+            State: "ENABLED"
         };
 
-        const putEventParams = {
-            Entries: [
-                {
-                    Source: "housekit.service",
-                    DetailType: "Service End Scheduled",
-                    Detail: JSON.stringify(eventPayload),
-                    Time: estimatedEnd
-                }
-            ]
-        };
-
-        await eventBridgeClient.send(new PutEventsCommand(putEventParams));
+        await schedulerClient.send(new CreateScheduleCommand(scheduleParams));
 
         // ✅ Respuesta exitosa
         return {
@@ -215,7 +227,8 @@ export const requestService = async (event) => {
                         document: userData.document,
                         remainingQuotes: currentQuotes - 1
                     },
-                    scheduledEndTime: estimatedEnd.toISOString()
+                    scheduledEndTime: estimatedEnd.toISOString(),
+                    scheduleName: scheduleName
                 }
             }),
         };
