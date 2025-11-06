@@ -160,10 +160,12 @@ export const requestService = async (event) => {
         // 1.6 📝 Crear registro en tabla de services
         const now = new Date();
         const estimatedEnd = new Date(now.getTime() + (5 * 60 * 1000)); // +1.5 horas
+        const timestamp = now.getTime(); // Unix timestamp como número
 
         const serviceRecord = {
             PK: device,
-            SK: user,
+            SK: timestamp, // Unix timestamp como número para sort key
+            user: user, // Nuevo atributo user
             serviceType: serviceType,
             startedAt: now.toISOString(),
             finalEstimated: estimatedEnd.toISOString(),
@@ -198,7 +200,8 @@ export const requestService = async (event) => {
                 Input: JSON.stringify({
                     house: house,
                     device: device,
-                    user: user
+                    user: user,
+                    timestamp: timestamp // Añadir timestamp para encontrar el registro correcto
                 })
             },
             FlexibleTimeWindow: {

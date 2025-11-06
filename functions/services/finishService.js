@@ -23,14 +23,14 @@ export const finishService = async (event) => {
             payload = event;
         }
 
-        const { house, device, user } = payload;
+        const { house, device, user, timestamp } = payload;
 
-        if (!house || !device || !user) {
+        if (!house || !device || !user || !timestamp) {
             console.error("Payload incompleto:", payload);
-            throw new Error("Los campos 'house', 'device' y 'user' son requeridos en el payload.");
+            throw new Error("Los campos 'house', 'device', 'user' y 'timestamp' son requeridos en el payload.");
         }
 
-        console.log(`Finalizando servicio: Device=${device}, User=${user}, House=${house}`);
+        console.log(`Finalizando servicio: Device=${device}, User=${user}, House=${house}, Timestamp=${timestamp}`);
 
         // 2.1 🔄 Actualizar dispositivo - liberar userUsing
         const updateDeviceParams = {
@@ -55,7 +55,7 @@ export const finishService = async (event) => {
             TableName: SERVICES_TABLE,
             Key: {
                 PK: device,
-                SK: user
+                SK: timestamp // Usar timestamp como sort key
             },
             UpdateExpression: "SET finishedAt = :finishedAt",
             ExpressionAttributeValues: {

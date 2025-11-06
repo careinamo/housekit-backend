@@ -172,19 +172,21 @@ resources:
           - AttributeName: PK
             AttributeType: S
           - AttributeName: SK
+            AttributeType: N
+          - AttributeName: user
             AttributeType: S
         KeySchema:
           - AttributeName: PK
             KeyType: HASH # Partition key
           - AttributeName: SK
-            KeyType: RANGE # Sort key
+            KeyType: RANGE # Sort key (unix timestamp)
         GlobalSecondaryIndexes:
-          - IndexName: SKIndex
+          - IndexName: UserIndex
             KeySchema:
+              - AttributeName: user
+                KeyType: HASH # Partition key (user ID)
               - AttributeName: SK
-                KeyType: HASH # Partition key (SK como PK del índice)
-              - AttributeName: PK
-                KeyType: RANGE # Sort key (PK como SK del índice)
+                KeyType: RANGE # Sort key (unix timestamp)
             Projection:
               ProjectionType: ALL # Incluir todos los atributos
         BillingMode: PAY_PER_REQUEST
@@ -357,6 +359,7 @@ functions:
               - !GetAtt DevicesTable.Arn
               - !GetAtt UsersTableNew.Arn
               - !GetAtt ServicesTable.Arn
+              - !Sub "${ServicesTable.Arn}/index/UserIndex"
           - Effect: Allow
             Action:
               - scheduler:CreateSchedule
@@ -380,3 +383,21 @@ functions:
             Resource:
               - !GetAtt DevicesTable.Arn
               - !GetAtt ServicesTable.Arn
+              - !Sub "${ServicesTable.Arn}/index/UserIndex"
+
+  # 🔹 Nueva función para obtener servicios por usuario (usando GSI)
+  getServicesByUser:
+    handler: functions/services/getServicesByUser.getServicesByUser
+    events:
+      - httpApi:
+          path: /getServicesByUser
+          method: post
+    iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action:
+              - dynamodb:Query
+            Resource:
+              - !GetAtt ServicesTable.Arn
+              - !Sub "${ServicesTable.Arn}/index/UserIndex"
