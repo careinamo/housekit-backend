@@ -359,6 +359,7 @@ functions:
               - !GetAtt DevicesTable.Arn
               - !GetAtt UsersTableNew.Arn
               - !GetAtt ServicesTable.Arn
+              - !GetAtt UsersTable.Arn
               - !Sub "${ServicesTable.Arn}/index/UserIndex"
           - Effect: Allow
             Action:

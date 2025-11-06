@@ -1,10 +1,12 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { SchedulerClient, CreateScheduleCommand } from "@aws-sdk/client-scheduler";
+import axios from "axios";
 
 const USERS_TABLE_NAME = process.env.USERS_TABLE_NAME;
 const DEVICES_TABLE = process.env.DEVICES_TABLE;
 const SERVICES_TABLE = process.env.SERVICES_TABLE;
+const UNIQUE_TABLE = process.env.UNIQUE_TABLE;
 
 // Inicializa clientes AWS
 const dynamoClient = new DynamoDBClient({});
@@ -121,7 +123,76 @@ export const requestService = async (event) => {
             };
         }
 
-        // 1.4 🔄 Actualizar dispositivo con userUsing
+        // 1.4 � Encender dispositivo a través de CoolKit API
+        console.log(`Encendiendo dispositivo: ${deviceData.coolKitDeviceId}`);
+        
+        // 🔑 Recuperar token desde DynamoDB
+        const tokenParams = {
+            TableName: UNIQUE_TABLE,
+            Key: { PK: "ewelinkToken#1", SK: "ewelinkToken#1" }
+        };
+
+        const tokenResult = await ddbDocClient.send(new GetCommand(tokenParams));
+        const token = tokenResult.Item?.data?.accessToken;
+        
+        if (!token) {
+            return {
+                statusCode: 500,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    success: false,
+                    message: "No se encontró el token de CoolKit en DynamoDB.",
+                }),
+            };
+        }
+
+        // Verificar que el dispositivo tenga coolKitDeviceId
+        if (!deviceData.coolKitDeviceId) {
+            return {
+                statusCode: 400,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    success: false,
+                    message: "El dispositivo no tiene configurado el coolKitDeviceId.",
+                }),
+            };
+        }
+
+        // 📡 Llamada a CoolKit para encender el dispositivo
+        try {
+            const coolKitResponse = await axios.post(
+                "https://us-apia.coolkit.cc/v2/device/thing/status",
+                {
+                    type: 1,
+                    id: deviceData.coolKitDeviceId,
+                    params: {
+                        switches: [{ switch: "on", outlet: 0 }],
+                    },
+                },
+                {
+                    headers: {
+                        "X-CK-Nonce": "Ukz3EWWf",
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            console.log("Dispositivo encendido exitosamente:", coolKitResponse.data);
+        } catch (coolKitError) {
+            console.error("Error al encender el dispositivo:", coolKitError);
+            return {
+                statusCode: 500,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    success: false,
+                    message: "Error al encender el dispositivo.",
+                    error: coolKitError.response?.data || coolKitError.message
+                }),
+            };
+        }
+
+        // 1.5 �🔄 Actualizar dispositivo con userUsing (solo después de encender exitosamente)
         const updateDeviceParams = {
             TableName: DEVICES_TABLE,
             Key: {
@@ -139,7 +210,7 @@ export const requestService = async (event) => {
 
         await ddbDocClient.send(new UpdateCommand(updateDeviceParams));
 
-        // 1.5 📉 Decrementar cuotas del usuario
+        // 1.6 📉 Decrementar cuotas del usuario
         const updateUserParams = {
             TableName: USERS_TABLE_NAME,
             Key: {
@@ -157,7 +228,7 @@ export const requestService = async (event) => {
 
         await ddbDocClient.send(new UpdateCommand(updateUserParams));
 
-        // 1.6 📝 Crear registro en tabla de services
+        // 1.7 📝 Crear registro en tabla de services
         const now = new Date();
         const estimatedEnd = new Date(now.getTime() + (5 * 60 * 1000)); // +1.5 horas
         const timestamp = now.getTime(); // Unix timestamp como número
@@ -179,7 +250,7 @@ export const requestService = async (event) => {
 
         await ddbDocClient.send(new PutCommand(putServiceParams));
 
-        // 1.7 ⏰ Crear schedule en EventBridge Scheduler
+        // 1.8 ⏰ Crear schedule en EventBridge Scheduler
         const scheduleName = `finish-service-${user.replace('#', '-')}-${Date.now()}`;
         
         // Construir ARNs dinámicamente para evitar dependencias circulares
